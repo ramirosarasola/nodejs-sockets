@@ -1,96 +1,207 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-import { nanoid } from "nanoid";
+import { DatabaseService } from "../services/DatabaseService";
 
-const prisma = new PrismaClient();
+export class GameController {
+  private databaseService: DatabaseService;
 
-export const createGame = async (req: Request, res: Response) => {
-  try {
-    const { userId } = req.body;
-    if (!userId) {
-      return res.status(400).json({ error: "User ID is required" });
-    }
-
-    // Verificamos que exista el usuario
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // Creamos un código corto para la partida (puede ser de 6 letras)
-    const code = nanoid(6).toUpperCase();
-
-    // Creamos la partida y agregamos al usuario como primer jugador
-    const game = await prisma.game.create({
-      data: {
-        code,
-        players: {
-          create: {
-            user: { connect: { id: userId } },
-          },
-        },
-      },
-      include: {
-        players: {
-          include: { user: true },
-        },
-      },
-    });
-
-    return res.status(201).json(game);
-  } catch (error) {
-    console.error("Error creating game:", error);
-    return res.status(500).json({ error: "Internal server error" });
+  constructor() {
+    this.databaseService = DatabaseService.getInstance();
   }
-};
 
-export const joinGame = async (req: Request, res: Response) => {
-  try {
-    const { userId, code } = req.body;
-    if (!userId || !code) {
-      return res.status(400).json({ error: "User ID and code are required" });
+  public async createGame(req: Request, res: Response): Promise<void> {
+    try {
+      const { userId } = req.body;
+      
+      if (!userId) {
+        res.status(400).json({ error: "User ID is required" });
+        return;
+      }
+
+      // Verificar que exista el usuario
+      const user = await this.databaseService.findUserById(userId);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      // Crear la partida
+      const game = await this.databaseService.createGame(userId);
+      res.status(201).json(game);
+    } catch (error) {
+      console.error("Error creating game:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
+  }
 
-    // Verificar usuario
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
+  public async joinGame(req: Request, res: Response): Promise<void> {
+    try {
+      const { userId, code } = req.body;
+      
+      if (!userId || !code) {
+        res.status(400).json({ error: "User ID and code are required" });
+        return;
+      }
+
+      // Verificar usuario
+      const user = await this.databaseService.findUserById(userId);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      // Buscar partida por código
+      const game = await this.databaseService.findGameByCode(code);
+      if (!game) {
+        res.status(404).json({ error: "Game not found" });
+        return;
+      }
+
+      try {
+        // Agregar al usuario a la partida
+        const updatedGame = await this.databaseService.joinGame(
+          game.id,
+          userId
+        );
+        res.json(updatedGame);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "User already joined this game"
+        ) {
+          res.status(409).json({ error: "User already joined this game" });
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      console.error("Error joining game:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
+  }
 
-    // Buscar partida por código
-    const game = await prisma.game.findUnique({
-      where: { code: code.toUpperCase() },
-      include: { players: true },
-    });
-    if (!game) {
-      return res.status(404).json({ error: "Game not found" });
+  public async getGameByCode(req: Request, res: Response): Promise<void> {
+    try {
+      const { code } = req.params;
+
+      const game = await this.databaseService.findGameByCode(code);
+      if (!game) {
+        res.status(404).json({ error: "Game not found" });
+        return;
+      }
+
+      res.json(game);
+    } catch (error) {
+      console.error("Error getting game:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
+  }
 
-    // ¿Ya está en la partida?
-    const alreadyJoined = await prisma.gamePlayer.findFirst({
-      where: { gameId: game.id, userId },
-    });
-    if (alreadyJoined) {
-      return res.status(409).json({ error: "User already joined this game" });
+  public async getGameById(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      const game = await this.databaseService.findGameById(id);
+      if (!game) {
+        res.status(404).json({ error: "Game not found" });
+        return;
+      }
+
+      res.json(game);
+    } catch (error) {
+      console.error("Error getting game:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
+  }
 
-    // Agregar al usuario a la partida
-    await prisma.gamePlayer.create({
-      data: {
-        gameId: game.id,
+  public async updateGameStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const { gameId } = req.params;
+      const { status } = req.body;
+
+      if (!status) {
+        res.status(400).json({ error: "Status is required" });
+        return;
+      }
+
+      const game = await this.databaseService.updateGameStatus(gameId, status);
+      res.json(game);
+    } catch (error) {
+      console.error("Error updating game status:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  public async getGameScores(req: Request, res: Response): Promise<void> {
+    try {
+      const { gameId } = req.params;
+
+      const scores = await this.databaseService.getGameScores(gameId);
+      res.json(scores);
+    } catch (error) {
+      console.error("Error getting game scores:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  public async getPlayerScores(req: Request, res: Response): Promise<void> {
+    try {
+      const { gameId } = req.params;
+
+      const scores = await this.databaseService.getPlayerScores(gameId);
+      res.json(scores);
+    } catch (error) {
+      console.error("Error getting player scores:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  public async saveGameScore(req: Request, res: Response): Promise<void> {
+    try {
+      const { gameId, userId, score } = req.body;
+
+      if (!gameId || !userId || score === undefined) {
+        res
+          .status(400)
+          .json({ error: "Game ID, User ID and score are required" });
+        return;
+      }
+
+      const savedScore = await this.databaseService.saveGameScore(
+        gameId,
         userId,
-      },
-    });
-
-    // Devolver la partida con todos los jugadores
-    const updatedGame = await prisma.game.findUnique({
-      where: { id: game.id },
-      include: { players: { include: { user: true } } },
-    });
-
-    return res.json(updatedGame);
-  } catch (error) {
-    console.error("Error joining game:", error);
-    return res.status(500).json({ error: "Internal server error" });
+        score
+      );
+      res.status(201).json(savedScore);
+    } catch (error) {
+      console.error("Error saving score:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
-};
+
+  public async getActiveGames(req: Request, res: Response): Promise<void> {
+    try {
+      const games = await this.databaseService.getActiveGames();
+      res.json(games);
+    } catch (error) {
+      console.error("Error getting active games:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  public async getGameWithFullDetails(req: Request, res: Response): Promise<void> {
+    try {
+      const { gameId } = req.params;
+
+      const game = await this.databaseService.getGameWithFullDetails(gameId);
+      if (!game) {
+        res.status(404).json({ error: "Game not found" });
+        return;
+      }
+
+      res.json(game);
+    } catch (error) {
+      console.error("Error getting game with full details:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+}

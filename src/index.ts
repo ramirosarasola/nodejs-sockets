@@ -1,18 +1,22 @@
-import http from "http";
-import { Server as SocketIOServer } from "socket.io";
-import dotenv from "dotenv";
-import app from "./app"; // 👈 importamos tu app express
-import { registerGameSocket } from "./sockets/gameSocket";
+// Core Services
+export { GameManager } from "./services/GameManager";
+export { GameService } from "./services/GameService";
+export { DatabaseService } from "./services/DatabaseService";
+export { RoundService } from "./services/RoundService";
 
-dotenv.config();
+// Configuration
+export { AppConfig } from "./config/AppConfig";
 
-const server = http.createServer(app);
-const io = new SocketIOServer(server, { cors: { origin: "*" } });
+// Utilities
+export { Logger, LogLevel } from "./utils/Logger";
 
-// Usar el handler modularizado
-registerGameSocket(io);
+// Controllers
+export { UserController } from "./controllers/userController";
+export { GameController } from "./controllers/gameController";
+export { RoundController } from "./controllers/RoundController";
 
-const PORT = process.env.PORT || 5001;
-server.listen(PORT, () => {
-  console.log(`Servidor escuchando en http://localhost:${PORT}`);
-});
+// Socket Handling
+export { SocketHandler } from "./sockets/SocketHandler";
+
+// Types
+export * from "./types";

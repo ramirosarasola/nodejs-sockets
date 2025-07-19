@@ -10,35 +10,98 @@ generator client {
 model User {
   id        String       @id @default(uuid())
   username  String       @unique
+  email     String       @unique
   createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
   games     GamePlayer[]
+  scores    GameScore[]
+  answers   RoundAnswer[]
+  
+  @@map("users")
 }
 
 model Game {
   id        String       @id @default(uuid())
-  code      String       @unique // Para invitar por código
+  code      String       @unique
+  status    GameStatus   @default(WAITING)
   createdAt DateTime     @default(now())
-  started   Boolean      @default(false)
-  finished  Boolean      @default(false)
+  updatedAt DateTime     @updatedAt
+  startedAt DateTime?
+  finishedAt DateTime?
+  
+  // Relaciones
   players   GamePlayer[]
   rounds    Round[]
+  scores    GameScore[]
+  
+  @@map("games")
 }
 
 model GamePlayer {
-  id     String @id @default(uuid())
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
-  game   Game   @relation(fields: [gameId], references: [id])
-  gameId String
-  score  Int    @default(0)
+  id        String   @id @default(uuid())
+  gameId    String
+  userId    String
+  score     Int      @default(0)
+  joinedAt  DateTime @default(now())
+  
+  // Relaciones
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([gameId, userId])
+  @@map("game_players")
 }
 
 model Round {
-  id      String   @id @default(uuid())
-  game    Game     @relation(fields: [gameId], references: [id])
-  gameId  String
-  letter  String
-  startAt DateTime
-  endAt   DateTime
-  // Puedes agregar respuestas, etc.
+  id        String   @id @default(uuid())
+  gameId    String
+  roundNumber Int
+  letter    String
+  startTime DateTime @default(now())
+  endTime   DateTime?
+  
+  // Relaciones
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  answers   RoundAnswer[]
+  
+  @@unique([gameId, roundNumber])
+  @@map("rounds")
+}
+
+model RoundAnswer {
+  id       String @id @default(uuid())
+  roundId  String
+  userId   String
+  answers  Json   // Almacena las respuestas como JSON
+  score    Int    @default(0)
+  finishedAt DateTime @default(now())
+  
+  // Relaciones
+  round    Round  @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([roundId, userId])
+  @@map("round_answers")
+}
+
+model GameScore {
+  id        String   @id @default(uuid())
+  gameId    String
+  userId    String
+  score     Int
+  createdAt DateTime @default(now())
+  
+  // Relaciones
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([gameId, userId])
+  @@map("game_scores")
+}
+
+enum GameStatus {
+  WAITING
+  PLAYING
+  FINISHED
+  CANCELLED
 }

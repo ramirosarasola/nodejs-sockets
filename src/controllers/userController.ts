@@ -1,54 +1,68 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { DatabaseService } from "../services/DatabaseService";
 
-const prisma = new PrismaClient();
+export class UserController {
+  private databaseService: DatabaseService;
 
-export const createUser = async (req: Request, res: Response) => {
-  try {
-    const { username } = req.body;
-    if (!username) {
-      return res.status(400).json({ error: "Username is required" });
-    }
-
-    // Chequeamos si ya existe un usuario con ese nombre
-    const existingUser = await prisma.user.findUnique({
-      where: { username },
-    });
-    if (existingUser) {
-      return res.status(409).json({ error: "Username already exists" });
-    }
-
-    // Creamos el usuario
-    const user = await prisma.user.create({
-      data: { username },
-    });
-
-    return res.status(201).json(user);
-  } catch (error) {
-    console.error("Error creating user:", error);
-    return res.status(500).json({ error: "Internal server error" });
+  constructor() {
+    this.databaseService = DatabaseService.getInstance();
   }
-};
 
-export const searchUser = async (req: Request, res: Response) => {
-  try {
-    const { username } = req.query;
+  public async createUser(req: Request, res: Response): Promise<void> {
+    try {
+      const { username, email } = req.body;
 
-    if (!username || typeof username !== "string") {
-      return res.status(400).json({ error: "Username parameter is required" });
+      if (!username || !email) {
+        res.status(400).json({ error: "Username and email are required" });
+        return;
+      }
+
+      // Verificar si el usuario ya existe
+      const existingUser = await this.databaseService.findUserByEmail(email);
+      if (existingUser) {
+        res.status(409).json({ error: "User already exists" });
+        return;
+      }
+
+      const user = await this.databaseService.createUser(username, email);
+      res.status(201).json(user);
+    } catch (error) {
+      console.error("Error creating user:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
-
-    const user = await prisma.user.findUnique({
-      where: { username },
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    return res.status(200).json(user);
-  } catch (error) {
-    console.error("Error searching user:", error);
-    return res.status(500).json({ error: "Internal server error" });
   }
-};
+
+  public async getUserById(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      const user = await this.databaseService.findUserById(id);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      res.json(user);
+    } catch (error) {
+      console.error("Error getting user:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  public async getUserByEmail(req: Request, res: Response): Promise<void> {
+    try {
+      const { email } = req.params;
+
+      const user = await this.databaseService.findUserByEmail(email);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      res.json(user);
+    } catch (error) {
+      console.error("Error getting user by email:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+}
