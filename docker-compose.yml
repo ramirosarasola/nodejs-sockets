@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine # Versión específica más ligera
+    container_name: app_postgres
+    environment:
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: SecurePassword123! # Cambia esto en producción
+      POSTGRES_DB: app_db
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=en_US.UTF-8"
+      PGDATA: /var/lib/postgresql/data/pgdata # Mejor organización de datos
+      # Configuraciones de rendimiento (ajusta según tu hardware):
+      POSTGRES_SHARED_BUFFERS: 512MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1536MB
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d # Para scripts de inicialización
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d app_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  pgadmin: # Opcional: Interfaz gráfica para administración
+    image: dpage/pgadmin4
+    container_name: app_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: PgAdminPassword123! # Cambia esto
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
