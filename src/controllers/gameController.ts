@@ -1,11 +1,14 @@
 import { Request, Response } from "express";
 import { DatabaseService } from "../services/DatabaseService";
+import { GameManager } from "../services/GameManager";
 
 export class GameController {
   private databaseService: DatabaseService;
+  private gameManager: GameManager;
 
   constructor() {
     this.databaseService = DatabaseService.getInstance();
+    this.gameManager = GameManager.getInstance();
   }
 
   public async createGame(req: Request, res: Response): Promise<void> {
@@ -37,6 +40,8 @@ export class GameController {
     try {
       const { userId, code } = req.body;
       
+      console.log("JoinGame request:", { userId, code });
+      
       if (!userId || !code) {
         res.status(400).json({ error: "User ID and code are required" });
         return;
@@ -45,25 +50,38 @@ export class GameController {
       // Verificar usuario
       const user = await this.databaseService.findUserById(userId);
       if (!user) {
+        console.log("Usuario no encontrado:", userId);
         res.status(404).json({ error: "User not found" });
         return;
       }
 
+      console.log("Usuario encontrado:", user);
+
       // Buscar partida por código
       const game = await this.databaseService.findGameByCode(code);
       if (!game) {
+        console.log("Juego no encontrado:", code);
         res.status(404).json({ error: "Game not found" });
         return;
       }
 
+      console.log("Juego encontrado:", game.id);
+
       try {
-        // Agregar al usuario a la partida
+        // Agregar al usuario a la partida en la base de datos
         const updatedGame = await this.databaseService.joinGame(
           game.id,
           userId
         );
+        
+        console.log("Juego actualizado después del join:", updatedGame);
+
+        // Sincronizar con el sistema de sockets
+        this.syncWithSocketSystem(code, user);
+
         res.json(updatedGame);
       } catch (error) {
+        console.error("Error en joinGame:", error);
         if (
           error instanceof Error &&
           error.message === "User already joined this game"
@@ -76,6 +94,15 @@ export class GameController {
     } catch (error) {
       console.error("Error joining game:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  private syncWithSocketSystem(gameCode: string, user: any): void {
+    try {
+      console.log(`Jugador ${user.username} será agregado cuando se conecte por socket`);
+      // No hacer nada aquí, la sincronización se manejará cuando el jugador se conecte por socket
+    } catch (error) {
+      console.error("Error sincronizando con sistema de sockets:", error);
     }
   }
 

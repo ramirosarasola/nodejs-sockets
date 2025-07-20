@@ -2,14 +2,17 @@ import { Server } from "socket.io";
 import { Player } from "../types";
 import { Logger } from "../utils/Logger";
 import { GameManager } from "./GameManager";
+import { DatabaseService } from "./DatabaseService";
 
 export class GameService {
   private gameManager: GameManager;
+  private databaseService: DatabaseService;
   private io: Server;
   private logger: Logger;
 
   constructor(io: Server) {
     this.gameManager = GameManager.getInstance();
+    this.databaseService = DatabaseService.getInstance();
     this.io = io;
     this.logger = Logger.getInstance();
   }
@@ -19,55 +22,102 @@ export class GameService {
     return letters[Math.floor(Math.random() * letters.length)];
   }
 
-  public joinGame(
-    gameCode: string,
-    username: string,
-    socketId: string
-  ): boolean {
-    // Crear la partida si no existe
+  public async joinGame(gameCode: string, username: string, socketId: string): Promise<boolean> {
+    console.log(`🎯 GameService.joinGame iniciado: ${gameCode}, ${username}, ${socketId}`);
+
+    // Create the game if it doesn't exist
     if (!this.gameManager.getGameState(gameCode)) {
       this.gameManager.createGame(gameCode);
+      console.log(`Juego creado en sistema de sockets: ${gameCode}`);
     }
 
-    const player: Player = {
-      id: socketId,
-      username,
-      socketId,
-      score: 0,
-    };
-
-    const success = this.gameManager.addPlayer(gameCode, player);
-
-    if (success) {
-      const gameState = this.gameManager.getGameState(gameCode);
-      if (gameState) {
-        this.io.to(gameCode).emit("player_list", gameState.room.players);
-      }
+    // Get the current game state
+    const gameState = this.gameManager.getGameState(gameCode);
+    if (!gameState) {
+      console.error(`No se pudo obtener el estado del juego ${gameCode}`);
+      return false;
     }
 
-    return success;
+    // Check if the player already exists in the system
+    const existingPlayer = gameState.room.players.find((p) => p.username === username);
+
+    if (existingPlayer) {
+      // Update the existing player's socketId
+      existingPlayer.socketId = socketId;
+      console.log(`Jugador ${username} ya existe, actualizando socketId a: ${socketId}`);
+    } else {
+      // Add the current player to the socket system
+      const newPlayer = {
+        id: socketId,
+        username,
+        socketId,
+        score: 0,
+      };
+
+      this.gameManager.addPlayer(gameCode, newPlayer);
+      console.log(`Jugador ${username} agregado al juego ${gameCode}`);
+    }
+
+    // Emit the updated list of players
+    console.log(`📤 Emitiendo player_list con ${gameState.room.players.length} jugadores`);
+    console.log(
+      `📋 Jugadores a emitir:`,
+      gameState.room.players.map((p) => ({
+        username: p.username,
+        socketId: p.socketId,
+      }))
+    );
+    console.log(`🎯 Sala: ${gameCode}`);
+    console.log(`🔌 Socket.io disponible:`, !!this.io);
+    console.log(`🔌 Socket.io rooms:`, this.io.sockets.adapter.rooms);
+
+    // Small delay to ensure the socket is in the room
+    setTimeout(() => {
+      this.io.to(gameCode).emit("player_list", gameState.room.players);
+      console.log(`✅ Evento player_list emitido a la sala ${gameCode}`);
+
+      // Test event to verify communication
+      this.io.to(gameCode).emit("test_event", {
+        message: "Test desde backend",
+        players: gameState.room.players.length,
+      });
+      console.log(`🧪 Evento de prueba emitido a la sala ${gameCode}`);
+    }, 200);
+
+    return true;
   }
 
   public startGame(gameCode: string, username: string): void {
     this.logger.logPlayerAction(gameCode, username, "start_game");
 
-    // El host confirma automáticamente
+    // The host confirms automatically
     this.gameManager.addConfirmation(gameCode, username);
 
-    // Iniciar timer y proceso de confirmación
-    this.startGameWithTimer(gameCode, false);
+    // Start immediately when the host starts manually
+    const letter = this.generateRandomLetter();
+    const round = this.gameManager.createRound(gameCode, letter);
+
+    this.io.to(gameCode).emit("game_started", {
+      letter,
+      autoStarted: false,
+      roundNumber: round.roundNumber,
+      isNewRound: false,
+    });
+
+    // Clear confirmations
+    this.gameManager.clearTimer(gameCode);
   }
 
   public startNextRound(gameCode: string, username: string): void {
     this.logger.logPlayerAction(gameCode, username, "start_next_round");
 
-    // Incrementar número de ronda
+    // Increment the round number
     this.gameManager.startNextRound(gameCode);
 
-    // El host confirma automáticamente
+    // The host confirms automatically
     this.gameManager.addConfirmation(gameCode, username);
 
-    // Iniciar timer y proceso de confirmación para nueva ronda
+    // Start timer and confirmation process for new round
     this.startGameWithTimer(gameCode, true);
   }
 
@@ -76,47 +126,39 @@ export class GameService {
 
     this.gameManager.addConfirmation(gameCode, username);
 
-    // Notificar a todos quién confirmó
+    // Notify all players who confirmed
     const confirmations = this.gameManager.getAllConfirmations(gameCode);
     this.io.to(gameCode).emit("player_confirmed", {
       username,
       confirmedPlayers: confirmations,
     });
 
-    // Verificar si todos confirmaron
+    // Check if all players confirmed
     const gameState = this.gameManager.getGameState(gameCode);
-    const isNewRound =
-      gameState &&
-      gameState.room.currentRound &&
-      gameState.room.currentRound > 1;
+    const isNewRound = gameState && gameState.room.currentRound && gameState.room.currentRound > 1;
     if (isNewRound === undefined) {
       return;
     }
     this.checkAllConfirmed(gameCode, isNewRound ? true : false);
   }
 
-  public finishRound(
-    gameCode: string,
-    username: string,
-    answers: Record<string, string>
-  ): void {
+  public finishRound(gameCode: string, username: string, answers: Record<string, string>): void {
     this.logger.logPlayerAction(gameCode, username, "finish_round", {
       answers,
     });
 
-    // Guardar respuestas y sumar puntos
+    // Save answers and add points
     this.gameManager.addRoundAnswer(gameCode, username, answers);
 
     const scores = this.gameManager.getScores(gameCode);
-    const currentRound =
-      this.gameManager.getGameState(gameCode)?.room.currentRound || 1;
+    const currentRound = this.gameManager.getGameState(gameCode)?.room.currentRound || 1;
 
     this.logger.logGameEvent(gameCode, "round_finished", {
       scores,
       currentRound,
     });
 
-    // Notificar a todos en la sala que alguien terminó
+    // Notify all players in the room that someone finished
     this.io.to(gameCode).emit("round_finished", {
       finishedBy: username,
       answers: answers,
@@ -126,7 +168,7 @@ export class GameService {
   }
 
   public disconnectPlayer(socketId: string): void {
-    // Eliminar al jugador de todas las salas
+    // Remove the player from all rooms
     const allGames = this.gameManager.getAllGames();
 
     allGames.forEach((game) => {
@@ -140,14 +182,11 @@ export class GameService {
     });
   }
 
-  private startGameWithTimer(
-    gameCode: string,
-    isNewRound: boolean = false
-  ): void {
-    // Limpiar timer existente si hay uno
+  private startGameWithTimer(gameCode: string, isNewRound: boolean = false): void {
+    // Clear existing timer if there is one
     this.gameManager.clearTimer(gameCode);
 
-    // Iniciar timer
+    // Start timer
     const timer = setTimeout(() => {
       this.logger.logGameEvent(gameCode, "timer_expired", { isNewRound });
 
@@ -162,13 +201,13 @@ export class GameService {
         isNewRound,
       });
 
-      // Limpiar confirmaciones
+      // Clear confirmations
       this.gameManager.clearTimer(gameCode);
     }, this.gameManager.getRoundTimer());
 
     this.gameManager.setTimer(gameCode, timer);
 
-    // Notificar a todos que el juego está por comenzar
+    // Notify all players that the game is about to start
     const gameState = this.gameManager.getGameState(gameCode);
     if (gameState) {
       this.io.to(gameCode).emit("game_ready_to_start", {
@@ -179,14 +218,11 @@ export class GameService {
     }
   }
 
-  private checkAllConfirmed(
-    gameCode: string,
-    isNewRound: boolean = false
-  ): void {
+  private checkAllConfirmed(gameCode: string, isNewRound: boolean = false): void {
     if (this.gameManager.isAllConfirmed(gameCode)) {
       this.logger.logGameEvent(gameCode, "all_confirmed", { isNewRound });
 
-      // Limpiar timer
+      // Clear timer
       this.gameManager.clearTimer(gameCode);
 
       const letter = this.generateRandomLetter();

@@ -1,10 +1,16 @@
 import { Router } from "express";
-import { UserController } from "../controllers/userController";
+import { UserController } from "../controllers/UserController";
 
 const router = Router();
 const userController = new UserController();
 
-// Crear usuario
+// Registro de usuario
+router.post("/register", (req, res) => userController.register(req, res));
+
+// Login de usuario
+router.post("/login", (req, res) => userController.login(req, res));
+
+// Crear usuario (mantener para compatibilidad)
 router.post("/", (req, res) => userController.createUser(req, res));
 
 // Obtener usuario por ID

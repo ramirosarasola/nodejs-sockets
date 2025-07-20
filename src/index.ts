@@ -11,8 +11,8 @@ export { AppConfig } from "./config/AppConfig";
 export { Logger, LogLevel } from "./utils/Logger";
 
 // Controllers
-export { UserController } from "./controllers/userController";
-export { GameController } from "./controllers/gameController";
+export { UserController } from "./controllers/UserController";
+export { GameController } from "./controllers/GameController";
 export { RoundController } from "./controllers/RoundController";
 
 // Socket Handling

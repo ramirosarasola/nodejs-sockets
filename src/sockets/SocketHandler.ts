@@ -13,31 +13,37 @@ export class SocketHandler {
 
   private setupEventHandlers(): void {
     this.io.on("connection", (socket: Socket) => {
-      console.log(`Cliente conectado: ${socket.id}`);
+      console.log(`🔌 Client connected: ${socket.id}`);
 
-      // Unirse a una partida
-      socket.on("join_game", ({ gameCode, username }) => {
+      // Join a game
+      socket.on("join_game", async ({ gameCode, username }) => {
         if (!gameCode || !username) {
+          console.log(`❌ Invalid data: gameCode=${gameCode}, username=${username}`);
           socket.emit("error", {
             message: "Game code and username are required",
           });
           return;
         }
 
-        const success = this.gameService.joinGame(
-          gameCode,
-          username,
-          socket.id
-        );
+        console.log(`🎮 Socket ${socket.id} trying to join game ${gameCode} as ${username}`);
+
+        const success = await this.gameService.joinGame(gameCode, username, socket.id);
         if (success) {
           socket.join(gameCode);
-          socket.emit("joined_game", { gameCode, username });
+          console.log(`✅ Socket ${socket.id} joined successfully to the room ${gameCode}`);
+
+          // Small delay to ensure the socket is in the room
+          setTimeout(() => {
+            socket.emit("joined_game", { gameCode, username });
+            console.log(`✅ Event joined_game emitted to ${socket.id}`);
+          }, 100);
         } else {
+          console.error(`❌ Socket ${socket.id} failed to join game ${gameCode}`);
           socket.emit("error", { message: "Failed to join game" });
         }
       });
 
-      // Iniciar juego
+      // Start game
       socket.on("start_game", ({ gameCode, username }) => {
         if (!gameCode || !username) {
           socket.emit("error", {
@@ -49,7 +55,7 @@ export class SocketHandler {
         this.gameService.startGame(gameCode, username);
       });
 
-      // Iniciar siguiente ronda
+      // Start next round
       socket.on("start_next_round", ({ gameCode, username }) => {
         if (!gameCode || !username) {
           socket.emit("error", {
@@ -61,7 +67,7 @@ export class SocketHandler {
         this.gameService.startNextRound(gameCode, username);
       });
 
-      // Jugador listo
+      // Player ready
       socket.on("player_ready", ({ gameCode, username }) => {
         if (!gameCode || !username) {
           socket.emit("error", {
@@ -73,7 +79,7 @@ export class SocketHandler {
         this.gameService.playerReady(gameCode, username);
       });
 
-      // Terminar ronda
+      // Finish round
       socket.on("tuti_fruti_finished", ({ gameCode, username, answers }) => {
         if (!gameCode || !username || !answers) {
           socket.emit("error", {
@@ -85,13 +91,13 @@ export class SocketHandler {
         this.gameService.finishRound(gameCode, username, answers);
       });
 
-      // Desconexión
+      // Disconnect
       socket.on("disconnect", () => {
-        console.log(`Cliente desconectado: ${socket.id}`);
+        console.log(`Client disconnected: ${socket.id}`);
         this.gameService.disconnectPlayer(socket.id);
       });
 
-      // Eventos de error
+      // Error events
       socket.on("error", (error) => {
         console.error("Error en socket:", error);
         socket.emit("error", { message: "Internal server error" });

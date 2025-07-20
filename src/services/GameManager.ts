@@ -43,10 +43,8 @@ export class GameManager {
     const gameState = this.gameStates.get(code);
     if (!gameState) return false;
 
-    // Verificar si el jugador ya existe
-    const existingPlayerIndex = gameState.room.players.findIndex(
-      (p) => p.socketId === player.socketId
-    );
+    // We validate the player by socket or by user id
+    const existingPlayerIndex = gameState.room.players.findIndex((p) => p.socketId === player.socketId || p.id === player.id);
     if (existingPlayerIndex !== -1) {
       gameState.room.players[existingPlayerIndex] = player;
     } else {
@@ -60,9 +58,7 @@ export class GameManager {
     const gameState = this.gameStates.get(code);
     if (!gameState) return undefined;
 
-    const playerIndex = gameState.room.players.findIndex(
-      (p) => p.socketId === socketId
-    );
+    const playerIndex = gameState.room.players.findIndex((p) => p.socketId === socketId);
     if (playerIndex === -1) return undefined;
 
     const removedPlayer = gameState.room.players.splice(playerIndex, 1)[0];
@@ -130,11 +126,7 @@ export class GameManager {
     return round;
   }
 
-  public addRoundAnswer(
-    code: string,
-    username: string,
-    answers: Record<string, string>
-  ): boolean {
+  public addRoundAnswer(code: string, username: string, answers: Record<string, string>): boolean {
     const gameState = this.gameStates.get(code);
     if (!gameState) return false;
 
@@ -143,7 +135,7 @@ export class GameManager {
 
     currentRound.answers[username] = answers;
 
-    // Sumar puntos al jugador
+    // Add 10 points to the player
     const player = gameState.room.players.find((p) => p.username === username);
     if (player) {
       player.score += this.POINTS_PER_WIN;

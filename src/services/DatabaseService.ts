@@ -16,7 +16,7 @@ export class DatabaseService {
     return DatabaseService.instance;
   }
 
-  // ===== USUARIO =====
+  // ===== USERS =====
   public async createUser(username: string, email: string) {
     try {
       return await this.prisma.user.create({
@@ -64,7 +64,7 @@ export class DatabaseService {
     }
   }
 
-  // ===== JUEGO =====
+  // ===== GAMES =====
   public async createGame(userId: string) {
     try {
       const code = nanoid(6).toUpperCase();
@@ -182,7 +182,7 @@ export class DatabaseService {
 
   public async joinGame(gameId: string, userId: string) {
     try {
-      // Verificar si ya está en la partida
+      // Check if the user is already in the game
       const existingPlayer = await this.prisma.gamePlayer.findUnique({
         where: {
           gameId_userId: {
@@ -196,7 +196,7 @@ export class DatabaseService {
         throw new Error("User already joined this game");
       }
 
-      // Agregar al usuario a la partida
+      // Add the user to the game
       await this.prisma.gamePlayer.create({
         data: {
           gameId,
@@ -212,10 +212,7 @@ export class DatabaseService {
     }
   }
 
-  public async updateGameStatus(
-    gameId: string,
-    status: "WAITING" | "PLAYING" | "FINISHED" | "CANCELLED"
-  ) {
+  public async updateGameStatus(gameId: string, status: "WAITING" | "PLAYING" | "FINISHED" | "CANCELLED") {
     try {
       const updateData: any = { status };
 
@@ -236,11 +233,7 @@ export class DatabaseService {
   }
 
   // ===== RONDAS =====
-  public async createRound(
-    gameId: string,
-    roundNumber: number,
-    letter: string
-  ) {
+  public async createRound(gameId: string, roundNumber: number, letter: string) {
     try {
       return await this.prisma.round.create({
         data: {
@@ -283,12 +276,7 @@ export class DatabaseService {
     }
   }
 
-  public async saveRoundAnswer(
-    roundId: string,
-    userId: string,
-    answers: Record<string, string>,
-    score: number = 10
-  ) {
+  public async saveRoundAnswer(roundId: string, userId: string, answers: Record<string, string>, score: number = 10) {
     try {
       return await this.prisma.roundAnswer.create({
         data: {
@@ -313,11 +301,7 @@ export class DatabaseService {
   }
 
   // ===== PUNTUACIONES =====
-  public async updatePlayerScore(
-    gameId: string,
-    userId: string,
-    score: number
-  ) {
+  public async updatePlayerScore(gameId: string, userId: string, score: number) {
     try {
       return await this.prisma.gamePlayer.update({
         where: {
@@ -402,7 +386,7 @@ export class DatabaseService {
     }
   }
 
-  // ===== CONSULTAS COMPLEJAS =====
+  // ===== COMPLEX QUERIES =====
   public async getGameWithFullDetails(gameId: string) {
     try {
       return await this.prisma.game.findUnique({
@@ -487,7 +471,7 @@ export class DatabaseService {
     }
   }
 
-  // ===== LIMPIEZA =====
+  // ===== CLEANUP =====
   public async disconnect() {
     await this.prisma.$disconnect();
   }
