@@ -4,44 +4,35 @@ import { GameController } from "../controllers/GameController";
 const router = Router();
 const gameController = new GameController();
 
-// Crear partida
-router.post("/", (req, res) => gameController.createGame(req, res));
+// ===== EXISTING ROUTES =====
 
-// Unirse a partida
-router.post("/join", (req, res) => gameController.joinGame(req, res));
+// Create game
+router.post("/", gameController.createGame.bind(gameController));
 
-// Obtener partida por código
-router.get("/code/:code", (req, res) => gameController.getGameByCode(req, res));
+// Join game
+router.post("/join", gameController.joinGame.bind(gameController));
 
-// Obtener partida por ID
-router.get("/:id", (req, res) => gameController.getGameById(req, res));
+// Get active games (debe ir antes de /:code para evitar conflictos)
+router.get("/", gameController.getActiveGames.bind(gameController));
 
-// Obtener partida con detalles completos
-router.get("/:gameId/details", (req, res) =>
-  gameController.getGameWithFullDetails(req, res)
-);
+// Get user games
+router.get("/user/:userId", gameController.getUserGames.bind(gameController));
 
-// Actualizar estado de partida
-router.put("/:gameId/status", (req, res) =>
-  gameController.updateGameStatus(req, res)
-);
+// Get game by code
+router.get("/:code", gameController.getGameByCode.bind(gameController));
 
-// Obtener puntuaciones de partida
-router.get("/:gameId/scores", (req, res) =>
-  gameController.getGameScores(req, res)
-);
+// ===== NEW PERSISTENCE ROUTES =====
 
-// Obtener puntuaciones de jugadores
-router.get("/:gameId/player-scores", (req, res) =>
-  gameController.getPlayerScores(req, res)
-);
+// Restore game from persistence
+router.post("/:code/restore", gameController.restoreGame.bind(gameController));
 
-// Guardar puntuación
-router.post("/scores", (req, res) => gameController.saveGameScore(req, res));
+// Save manual snapshot
+router.post("/:code/snapshot", gameController.saveSnapshot.bind(gameController));
 
-// Obtener partidas activas
-router.get("/active/list", (req, res) =>
-  gameController.getActiveGames(req, res)
-);
+// Get persistence information
+router.get("/:code/persistence", gameController.getPersistenceInfo.bind(gameController));
+
+// Clean up old persistence data
+router.delete("/:code/persistence", gameController.cleanupPersistence.bind(gameController));
 
 export default router;

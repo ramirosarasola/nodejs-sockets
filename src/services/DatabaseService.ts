@@ -9,6 +9,10 @@ export class DatabaseService {
     this.prisma = new PrismaClient();
   }
 
+  public getPrismaClient(): PrismaClient {
+    return this.prisma;
+  }
+
   public static getInstance(): DatabaseService {
     if (!DatabaseService.instance) {
       DatabaseService.instance = new DatabaseService();
@@ -467,6 +471,41 @@ export class DatabaseService {
       });
     } catch (error) {
       console.error("Error getting active games:", error);
+      throw error;
+    }
+  }
+
+  public async getUserGames(userId: string) {
+    try {
+      return await this.prisma.game.findMany({
+        where: {
+          players: {
+            some: {
+              userId: userId,
+            },
+          },
+          status: {
+            in: ["WAITING", "PLAYING"],
+          },
+        },
+        include: {
+          players: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  username: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+    } catch (error) {
+      console.error("Error getting user games:", error);
       throw error;
     }
   }

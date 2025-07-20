@@ -33,6 +33,8 @@ model Game {
   players   GamePlayer[]
   rounds    Round[]
   scores    GameScore[]
+  snapshots GameSnapshot[]
+  events    GameEvent[]
   
   @@map("games")
 }
@@ -97,6 +99,33 @@ model GameScore {
   
   @@unique([gameId, userId])
   @@map("game_scores")
+}
+
+// Nuevas tablas para persistencia del estado
+model GameSnapshot {
+  id        String   @id @default(uuid())
+  gameId    String
+  snapshot  Json     // Estado completo del juego en JSON
+  roundNumber Int?
+  createdAt DateTime @default(now())
+  
+  // Relaciones
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  
+  @@map("game_snapshots")
+}
+
+model GameEvent {
+  id        String   @id @default(uuid())
+  gameId    String
+  eventType String   // PLAYER_JOINED, ROUND_STARTED, ANSWER_SUBMITTED, etc.
+  eventData Json     // Datos específicos del evento
+  timestamp DateTime @default(now())
+  
+  // Relaciones
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  
+  @@map("game_events")
 }
 
 enum GameStatus {

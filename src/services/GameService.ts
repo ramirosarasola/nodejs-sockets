@@ -25,6 +25,28 @@ export class GameService {
   public async joinGame(gameCode: string, username: string, socketId: string): Promise<boolean> {
     console.log(`🎯 GameService.joinGame iniciado: ${gameCode}, ${username}, ${socketId}`);
 
+    // Check if the player is already in another game
+    const playerInOtherGame = this.gameManager.findPlayerInAllGames(username);
+    let playerRemovedFromOtherGame = false;
+
+    if (playerInOtherGame && playerInOtherGame.gameCode !== gameCode) {
+      // Remove player from the other game
+      this.gameManager.removePlayer(playerInOtherGame.gameCode, playerInOtherGame.player.socketId);
+      console.log(`🔄 Jugador ${username} removido del juego ${playerInOtherGame.gameCode} para unirse a ${gameCode}`);
+      playerRemovedFromOtherGame = true;
+
+      // Get updated game state after removal
+      const otherGameState = this.gameManager.getGameState(playerInOtherGame.gameCode);
+      if (otherGameState) {
+        // Notify players in the other game about the player leaving
+        this.io.to(playerInOtherGame.gameCode).emit("player_list", otherGameState.room.players);
+        this.io.to(playerInOtherGame.gameCode).emit("player_left", {
+          username,
+          message: `${username} se unió a otro juego`,
+        });
+      }
+    }
+
     // Create the game if it doesn't exist
     if (!this.gameManager.getGameState(gameCode)) {
       this.gameManager.createGame(gameCode);
@@ -38,13 +60,13 @@ export class GameService {
       return false;
     }
 
-    // Check if the player already exists in the system
+    // Check if the player already exists in the current game
     const existingPlayer = gameState.room.players.find((p) => p.username === username);
 
     if (existingPlayer) {
       // Update the existing player's socketId
       existingPlayer.socketId = socketId;
-      console.log(`Jugador ${username} ya existe, actualizando socketId a: ${socketId}`);
+      console.log(`Jugador ${username} ya existe en este juego, actualizando socketId a: ${socketId}`);
     } else {
       // Add the current player to the socket system
       const newPlayer = {

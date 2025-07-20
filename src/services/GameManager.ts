@@ -1,12 +1,25 @@
 import { GameState, GameRoom, Player, GameRound } from "../types";
+import { GamePersistenceService } from "./GamePersistenceService";
 
 export class GameManager {
   private static instance: GameManager;
   private gameStates: Map<string, GameState> = new Map();
   private readonly ROUND_TIMER = 30000; // 30 segundos
   private readonly POINTS_PER_WIN = 10;
+  private persistenceService: GamePersistenceService;
 
-  private constructor() {}
+  /**
+   * Asegura que confirmations sea un Set válido
+   */
+  private ensureConfirmationsIsSet(gameState: GameState): void {
+    if (!(gameState.confirmations instanceof Set)) {
+      gameState.confirmations = new Set(gameState.confirmations || []);
+    }
+  }
+
+  private constructor() {
+    this.persistenceService = GamePersistenceService.getInstance();
+  }
 
   public static getInstance(): GameManager {
     if (!GameManager.instance) {
@@ -32,6 +45,10 @@ export class GameManager {
     };
 
     this.gameStates.set(code, gameState);
+
+    // Log del evento de creación
+    this.persistenceService.logGameEvent(code, "GAME_CREATED", { room });
+
     return room;
   }
 
@@ -51,6 +68,12 @@ export class GameManager {
       gameState.room.players.push(player);
     }
 
+    // Log del evento de jugador agregado
+    this.persistenceService.logGameEvent(code, "PLAYER_JOINED", { player });
+
+    // Guardar snapshot en milestone
+    this.persistenceService.saveMilestoneSnapshot(code, gameState, "PLAYER_JOINED");
+
     return true;
   }
 
@@ -63,9 +86,17 @@ export class GameManager {
 
     const removedPlayer = gameState.room.players.splice(playerIndex, 1)[0];
 
+    // Log del evento de jugador removido
+    this.persistenceService.logGameEvent(code, "PLAYER_LEFT", { player: removedPlayer });
+
     // Si no quedan jugadores, eliminar la partida
     if (gameState.room.players.length === 0) {
       this.gameStates.delete(code);
+      this.persistenceService.stopAutoSnapshot(code);
+      this.persistenceService.logGameEvent(code, "GAME_EMPTY", {});
+    } else {
+      // Guardar snapshot en milestone
+      this.persistenceService.saveMilestoneSnapshot(code, gameState, "PLAYER_LEFT");
     }
 
     return removedPlayer;
@@ -77,6 +108,16 @@ export class GameManager {
 
     gameState.room.isActive = true;
     gameState.room.currentRound = 1;
+
+    // Log del evento de inicio de juego
+    this.persistenceService.logGameEvent(code, "GAME_STARTED", {
+      playerCount: gameState.room.players.length,
+    });
+
+    // Guardar snapshot en milestone e iniciar auto-snapshots
+    this.persistenceService.saveMilestoneSnapshot(code, gameState, "GAME_STARTED");
+    this.persistenceService.startAutoSnapshot(code);
+
     return true;
   }
 
@@ -86,6 +127,15 @@ export class GameManager {
 
     gameState.room.currentRound++;
     gameState.confirmations.clear();
+
+    // Log del evento de nueva ronda
+    this.persistenceService.logGameEvent(code, "ROUND_STARTED", {
+      roundNumber: gameState.room.currentRound,
+    });
+
+    // Guardar snapshot en milestone
+    this.persistenceService.saveMilestoneSnapshot(code, gameState, "ROUND_STARTED");
+
     return true;
   }
 
@@ -93,7 +143,12 @@ export class GameManager {
     const gameState = this.gameStates.get(code);
     if (!gameState) return false;
 
+    this.ensureConfirmationsIsSet(gameState);
     gameState.confirmations.add(username);
+
+    // Log del evento de confirmación
+    this.persistenceService.logGameEvent(code, "PLAYER_CONFIRMED", { username });
+
     return true;
   }
 
@@ -101,6 +156,7 @@ export class GameManager {
     const gameState = this.gameStates.get(code);
     if (!gameState) return [];
 
+    this.ensureConfirmationsIsSet(gameState);
     return Array.from(gameState.confirmations);
   }
 
@@ -108,6 +164,7 @@ export class GameManager {
     const gameState = this.gameStates.get(code);
     if (!gameState) return false;
 
+    this.ensureConfirmationsIsSet(gameState);
     return gameState.confirmations.size >= gameState.room.players.length;
   }
 
@@ -123,6 +180,13 @@ export class GameManager {
     };
 
     gameState.rounds.push(round);
+
+    // Log del evento de ronda creada
+    this.persistenceService.logGameEvent(code, "ROUND_CREATED", {
+      roundNumber: round.roundNumber,
+      letter: round.letter,
+    });
+
     return round;
   }
 
@@ -140,6 +204,13 @@ export class GameManager {
     if (player) {
       player.score += this.POINTS_PER_WIN;
     }
+
+    // Log del evento de respuesta
+    this.persistenceService.logGameEvent(code, "ANSWER_SUBMITTED", {
+      username,
+      roundNumber: currentRound.roundNumber,
+      score: this.POINTS_PER_WIN,
+    });
 
     return true;
   }
@@ -191,12 +262,65 @@ export class GameManager {
     return Array.from(this.gameStates.values()).map((state) => state.room);
   }
 
+  /**
+   * Busca un jugador por username en todos los juegos
+   * @param username Nombre del jugador a buscar
+   * @returns Objeto con el juego y el jugador encontrado, o null si no se encuentra
+   */
+  public findPlayerInAllGames(username: string): { gameCode: string; player: Player } | null {
+    for (const [gameCode, gameState] of this.gameStates) {
+      const player = gameState.room.players.find((p) => p.username === username);
+      if (player) {
+        return { gameCode, player };
+      }
+    }
+    return null;
+  }
+
+  // ===== MÉTODOS DE PERSISTENCIA =====
+
+  /**
+   * Restaura un juego desde la base de datos
+   */
+  public async restoreGame(code: string): Promise<boolean> {
+    try {
+      const snapshot = await this.persistenceService.getLatestSnapshot(code);
+      if (!snapshot) return false;
+
+      this.gameStates.set(code, snapshot.snapshot);
+      console.log(`Juego ${code} restaurado desde snapshot`);
+      return true;
+    } catch (error) {
+      console.error("Error restaurando juego:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Guarda un snapshot manual del estado actual
+   */
+  public async saveCurrentState(code: string): Promise<void> {
+    const gameState = this.gameStates.get(code);
+    if (!gameState) return;
+
+    await this.persistenceService.saveGameSnapshot(code, gameState);
+  }
+
+  /**
+   * Verifica si un juego tiene datos de persistencia
+   */
+  public async hasPersistenceData(code: string): Promise<boolean> {
+    return await this.persistenceService.hasPersistenceData(code);
+  }
+
   public cleanup(): void {
     this.gameStates.forEach((state, code) => {
       if (state.timer) {
         clearTimeout(state.timer);
       }
+      this.persistenceService.stopAutoSnapshot(code);
     });
     this.gameStates.clear();
+    this.persistenceService.cleanup();
   }
 }
