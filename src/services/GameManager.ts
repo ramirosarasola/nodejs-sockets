@@ -1,12 +1,13 @@
-import { GameState, GameRoom, Player, GameRound } from "../types";
+import { GameState, GameRoom, Player, GameRound, GameConfig } from "../types";
 import { GamePersistenceService } from "./GamePersistenceService";
+import { GameConfigService } from "./GameConfigService";
 
 export class GameManager {
   private static instance: GameManager;
   private gameStates: Map<string, GameState> = new Map();
-  private readonly ROUND_TIMER = 30000; // 30 segundos
-  private readonly POINTS_PER_WIN = 10;
+  private gameConfigs: Map<string, GameConfig> = new Map(); // Configuración por juego
   private persistenceService: GamePersistenceService;
+  private configService: GameConfigService;
 
   /**
    * Asegura que confirmations sea un Set válido
@@ -19,6 +20,7 @@ export class GameManager {
 
   private constructor() {
     this.persistenceService = GamePersistenceService.getInstance();
+    this.configService = GameConfigService.getInstance();
   }
 
   public static getInstance(): GameManager {
@@ -28,7 +30,7 @@ export class GameManager {
     return GameManager.instance;
   }
 
-  public createGame(code: string): GameRoom {
+  public async createGame(code: string, configId?: string): Promise<GameRoom> {
     const room: GameRoom = {
       id: code,
       code,
@@ -46,10 +48,47 @@ export class GameManager {
 
     this.gameStates.set(code, gameState);
 
+    // Obtener configuración por defecto si no se especifica
+    let config: GameConfig;
+    if (configId) {
+      const settings = await this.configService.getSettingsById(configId);
+      config = settings?.config || (await this.getDefaultConfig());
+    } else {
+      config = await this.getDefaultConfig();
+    }
+
+    this.gameConfigs.set(code, config);
+
     // Log del evento de creación
-    this.persistenceService.logGameEvent(code, "GAME_CREATED", { room });
+    this.persistenceService.logGameEvent(code, "GAME_CREATED", { room, config });
 
     return room;
+  }
+
+  /**
+   * Obtiene la configuración por defecto
+   */
+  private async getDefaultConfig(): Promise<GameConfig> {
+    const defaultSettings = await this.configService.getDefaultSettings();
+    return (
+      defaultSettings?.config || {
+        maxRounds: 5,
+        roundTimeSeconds: 60,
+        autoStartDelay: 10,
+        minPlayers: 2,
+        maxPlayers: 8,
+        categories: ["name", "country", "animal", "thing"],
+        pointsPerWin: 10,
+        pointsPerUniqueAnswer: 5,
+      }
+    );
+  }
+
+  /**
+   * Obtiene la configuración de un juego específico
+   */
+  public getGameConfig(code: string): GameConfig | undefined {
+    return this.gameConfigs.get(code);
   }
 
   public getGameState(code: string): GameState | undefined {
@@ -199,17 +238,20 @@ export class GameManager {
 
     currentRound.answers[username] = answers;
 
-    // Add 10 points to the player
+    // Add points to the player based on configuration
+    const config = this.getGameConfig(code);
+    const pointsPerWin = config?.pointsPerWin || 10;
+
     const player = gameState.room.players.find((p) => p.username === username);
     if (player) {
-      player.score += this.POINTS_PER_WIN;
+      player.score += pointsPerWin;
     }
 
     // Log del evento de respuesta
     this.persistenceService.logGameEvent(code, "ANSWER_SUBMITTED", {
       username,
       roundNumber: currentRound.roundNumber,
-      score: this.POINTS_PER_WIN,
+      score: pointsPerWin,
     });
 
     return true;
@@ -254,8 +296,9 @@ export class GameManager {
     gameState.timer = undefined;
   }
 
-  public getRoundTimer(): number {
-    return this.ROUND_TIMER;
+  public getRoundTimer(code: string): number {
+    const config = this.getGameConfig(code);
+    return (config?.roundTimeSeconds || 60) * 1000; // Convertir a milisegundos
   }
 
   public getAllGames(): GameRoom[] {

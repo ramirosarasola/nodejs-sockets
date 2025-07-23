@@ -225,7 +225,7 @@ export class GameService {
 
       // Clear confirmations
       this.gameManager.clearTimer(gameCode);
-    }, this.gameManager.getRoundTimer());
+    }, this.gameManager.getRoundTimer(gameCode));
 
     this.gameManager.setTimer(gameCode, timer);
 
@@ -233,7 +233,7 @@ export class GameService {
     const gameState = this.gameManager.getGameState(gameCode);
     if (gameState) {
       this.io.to(gameCode).emit("game_ready_to_start", {
-        timeLeft: this.gameManager.getRoundTimer() / 1000,
+        timeLeft: this.gameManager.getRoundTimer(gameCode) / 1000,
         totalPlayers: gameState.room.players.length,
         isNewRound,
       });

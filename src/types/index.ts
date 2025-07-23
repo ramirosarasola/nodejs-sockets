@@ -40,3 +40,26 @@ export interface GameResult {
   scores: Record<string, number>;
   roundData: GameRound;
 }
+
+// ===== CONFIGURACIÓN DE JUEGO =====
+
+export interface GameConfig {
+  maxRounds: number;
+  roundTimeSeconds: number;
+  autoStartDelay: number;
+  minPlayers: number;
+  maxPlayers: number;
+  categories: string[];
+  pointsPerWin: number;
+  pointsPerUniqueAnswer: number;
+}
+
+export interface GameSettings {
+  id: string;
+  name: string;
+  description: string;
+  config: GameConfig;
+  isDefault: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}

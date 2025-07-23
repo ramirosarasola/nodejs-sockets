@@ -18,7 +18,7 @@ export class GameController {
 
   public async createGame(req: Request, res: Response): Promise<void> {
     try {
-      const { userId } = req.body;
+      const { userId, configId } = req.body;
 
       if (!userId) {
         res.status(400).json({ error: "userId is required" });
@@ -32,7 +32,8 @@ export class GameController {
         return;
       }
 
-      this.gameManager.createGame(game.code);
+      // Crear juego con configuración específica o por defecto
+      await this.gameManager.createGame(game.code, configId);
 
       res.status(201).json({
         success: true,

@@ -128,6 +128,18 @@ model GameEvent {
   @@map("game_events")
 }
 
+model GameSettings {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String
+  config      Json     // GameConfig como JSON
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("game_settings")
+}
+
 enum GameStatus {
   WAITING
   PLAYING

@@ -3,6 +3,7 @@ import cors from "cors";
 import userRoutes from "./routes/userRoutes";
 import gameRoutes from "./routes/gameRoutes";
 import roundRoutes from "./routes/roundRoutes";
+import gameConfigRoutes from "./routes/gameConfigRoutes";
 import { AppConfig } from "./config/AppConfig";
 
 const app = express();
@@ -22,5 +23,8 @@ app.use("/games", gameRoutes);
 
 // Rutas de rondas
 app.use("/rounds", roundRoutes);
+
+// Rutas de configuración de juego
+app.use("/game-config", gameConfigRoutes);
 
 export default app;
