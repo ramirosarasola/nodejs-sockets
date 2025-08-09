@@ -115,6 +115,9 @@ export class GameService {
     // The host confirms automatically
     this.gameManager.addConfirmation(gameCode, username);
 
+    // Ensure game is marked as started with round counter at 1
+    this.gameManager.startGame(gameCode);
+
     // Start immediately when the host starts manually
     const letter = this.generateRandomLetter();
     const round = this.gameManager.createRound(gameCode, letter);
@@ -173,19 +176,48 @@ export class GameService {
     this.gameManager.addRoundAnswer(gameCode, username, answers);
 
     const scores = this.gameManager.getScores(gameCode);
-    const currentRound = this.gameManager.getGameState(gameCode)?.room.currentRound || 1;
+    const state = this.gameManager.getGameState(gameCode);
+    const currentRoundNumber = state?.room.currentRound || 1;
+    const currentRound = this.gameManager.getCurrentRound(gameCode);
+    const answersByPlayer: Record<string, Record<string, string>> = {};
+    if (state) {
+      const submittedByPlayer = (currentRound?.answers || {}) as Record<string, Record<string, string>>;
+      state.room.players.forEach((p) => {
+        answersByPlayer[p.username] = submittedByPlayer[p.username] || {};
+      });
+    }
 
     this.logger.logGameEvent(gameCode, "round_finished", {
       scores,
-      currentRound,
+      currentRound: currentRoundNumber,
     });
 
     // Notify all players in the room that someone finished
     this.io.to(gameCode).emit("round_finished", {
       finishedBy: username,
-      answers: answers,
+      answersByPlayer,
+      letter: currentRound?.letter,
       scores: scores,
-      roundNumber: currentRound,
+      roundNumber: currentRoundNumber,
+    });
+  }
+
+  public voteAnswer(gameCode: string, voterUsername: string, targetUsername: string, category: string, points: number): void {
+    // Normalizar puntos
+    const valid = [0, 5, 10];
+    if (!valid.includes(points)) {
+      points = 0;
+    }
+
+    const result = this.gameManager.addVote(gameCode, voterUsername, targetUsername, category, points);
+    if (!result) return;
+
+    // Notificar el update de puntos de ronda a todos
+    const currentRound = this.gameManager.getCurrentRound(gameCode);
+    this.io.to(gameCode).emit("round_points_updated", {
+      roundNumber: currentRound?.roundNumber,
+      roundPoints: currentRound?.roundPoints || {},
+      votes: currentRound?.votes || {},
     });
   }
 
@@ -211,6 +243,12 @@ export class GameService {
     // Start timer
     const timer = setTimeout(() => {
       this.logger.logGameEvent(gameCode, "timer_expired", { isNewRound });
+
+      // If it's the first ever round, make sure the counter starts at 1
+      const stateBefore = this.gameManager.getGameState(gameCode);
+      if (stateBefore && stateBefore.room.currentRound === 0 && !isNewRound) {
+        this.gameManager.startGame(gameCode);
+      }
 
       const letter = this.generateRandomLetter();
       const round = this.gameManager.createRound(gameCode, letter);

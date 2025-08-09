@@ -18,6 +18,10 @@ export interface GameRound {
   roundNumber: number;
   letter: string;
   answers: Record<string, Record<string, string>>;
+  // votes[targetPlayer][category][voter] = points
+  votes?: Record<string, Record<string, Record<string, number>>>;
+  // Sum of all votes per target player in the round
+  roundPoints?: Record<string, number>;
   startTime: Date;
   endTime?: Date;
 }

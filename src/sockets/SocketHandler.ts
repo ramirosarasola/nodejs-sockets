@@ -91,6 +91,18 @@ export class SocketHandler {
         this.gameService.finishRound(gameCode, username, answers);
       });
 
+      // Vote answer
+      socket.on("vote_answer", ({ gameCode, voter, target, category, points }: { gameCode: string; voter: string; target: string; category: string; points: number }) => {
+        if (!gameCode || !voter || !target || !category) {
+          socket.emit("error", {
+            message: "Missing params for vote_answer",
+          });
+          return;
+        }
+
+        this.gameService.voteAnswer(gameCode, voter, target, category, points);
+      });
+
       // Disconnect
       socket.on("disconnect", () => {
         console.log(`Client disconnected: ${socket.id}`);

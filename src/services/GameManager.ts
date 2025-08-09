@@ -215,6 +215,8 @@ export class GameManager {
       roundNumber: gameState.room.currentRound,
       letter,
       answers: {},
+      votes: {},
+      roundPoints: {},
       startTime: new Date(),
     };
 
@@ -255,6 +257,42 @@ export class GameManager {
     });
 
     return true;
+  }
+
+  /**
+   * Registra un voto de un jugador sobre una respuesta de otro jugador en una categoría.
+   * points debe ser 0, 5 o 10. Si la celda está vacía, se ignora.
+   */
+  public addVote(code: string, voterUsername: string, targetUsername: string, category: string, points: number): { roundPoints: Record<string, number> } | null {
+    const gameState = this.gameStates.get(code);
+    if (!gameState || gameState.rounds.length === 0) return null;
+
+    const currentRound = gameState.rounds[gameState.rounds.length - 1];
+    const targetAnswers = currentRound.answers[targetUsername] || {};
+    if (!targetAnswers[category]) {
+      // No se puede votar si no hay respuesta en esa categoría
+      return { roundPoints: currentRound.roundPoints || {} };
+    }
+
+    if (!currentRound.votes) currentRound.votes = {};
+    if (!currentRound.votes[targetUsername]) currentRound.votes[targetUsername] = {};
+    if (!currentRound.votes[targetUsername][category]) currentRound.votes[targetUsername][category] = {};
+
+    currentRound.votes[targetUsername][category][voterUsername] = points;
+
+    // Recalcular puntos por jugador en la ronda
+    const roundPoints: Record<string, number> = {};
+    const votes = currentRound.votes;
+    Object.keys(votes).forEach((tgt) => {
+      let sum = 0;
+      Object.values(votes[tgt]).forEach((byCat) => {
+        sum += Object.values(byCat).reduce((a, b) => a + b, 0);
+      });
+      roundPoints[tgt] = sum;
+    });
+    currentRound.roundPoints = roundPoints;
+
+    return { roundPoints };
   }
 
   public getCurrentRound(code: string): GameRound | undefined {
