@@ -92,7 +92,7 @@ export class SocketHandler {
       });
 
       // Vote answer
-      socket.on("vote_answer", ({ gameCode, voter, target, category, points }: { gameCode: string; voter: string; target: string; category: string; points: number }) => {
+      socket.on("vote_answer", ({ gameCode, voter, target, category, points, roundNumber }: { gameCode: string; voter: string; target: string; category: string; points: number; roundNumber?: number }) => {
         if (!gameCode || !voter || !target || !category) {
           socket.emit("error", {
             message: "Missing params for vote_answer",
@@ -100,7 +100,7 @@ export class SocketHandler {
           return;
         }
 
-        this.gameService.voteAnswer(gameCode, voter, target, category, points);
+        this.gameService.voteAnswer(gameCode, voter, target, category, points, roundNumber);
       });
 
       // Disconnect

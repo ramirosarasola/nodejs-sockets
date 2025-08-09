@@ -145,8 +145,11 @@ export class GameManager {
     const gameState = this.gameStates.get(code);
     if (!gameState || gameState.room.players.length < 2) return false;
 
+    // Evitar reiniciar si ya se inició
     gameState.room.isActive = true;
-    gameState.room.currentRound = 1;
+    if (gameState.room.currentRound === 0) {
+      gameState.room.currentRound = 1;
+    }
 
     // Log del evento de inicio de juego
     this.persistenceService.logGameEvent(code, "GAME_STARTED", {
@@ -164,7 +167,8 @@ export class GameManager {
     const gameState = this.gameStates.get(code);
     if (!gameState) return false;
 
-    gameState.room.currentRound++;
+    // Avanzar exactamente una unidad, respetando base 1
+    gameState.room.currentRound = Math.max(1, gameState.room.currentRound + 1);
     gameState.confirmations.clear();
 
     // Log del evento de nueva ronda
@@ -291,6 +295,41 @@ export class GameManager {
       roundPoints[tgt] = sum;
     });
     currentRound.roundPoints = roundPoints;
+
+    return { roundPoints };
+  }
+
+  /**
+   * Variante robusta: registra el voto en una ronda específica por número
+   */
+  public addVoteForRound(code: string, roundNumber: number, voterUsername: string, targetUsername: string, category: string, points: number): { roundPoints: Record<string, number> } | null {
+    const gameState = this.gameStates.get(code);
+    if (!gameState || gameState.rounds.length === 0) return null;
+
+    const round = gameState.rounds.find((r) => r.roundNumber === roundNumber);
+    if (!round) return null;
+
+    const targetAnswers = round.answers[targetUsername] || {};
+    if (!targetAnswers[category]) {
+      return { roundPoints: round.roundPoints || {} };
+    }
+
+    if (!round.votes) round.votes = {};
+    if (!round.votes[targetUsername]) round.votes[targetUsername] = {};
+    if (!round.votes[targetUsername][category]) round.votes[targetUsername][category] = {};
+
+    round.votes[targetUsername][category][voterUsername] = points;
+
+    const roundPoints: Record<string, number> = {};
+    const votes = round.votes;
+    Object.keys(votes).forEach((tgt) => {
+      let sum = 0;
+      Object.values(votes[tgt]).forEach((byCat) => {
+        sum += Object.values(byCat).reduce((a, b) => a + b, 0);
+      });
+      roundPoints[tgt] = sum;
+    });
+    round.roundPoints = roundPoints;
 
     return { roundPoints };
   }

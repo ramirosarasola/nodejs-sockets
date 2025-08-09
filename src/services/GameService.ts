@@ -115,8 +115,11 @@ export class GameService {
     // The host confirms automatically
     this.gameManager.addConfirmation(gameCode, username);
 
-    // Ensure game is marked as started with round counter at 1
-    this.gameManager.startGame(gameCode);
+    // Ensure game is marked as started with round counter at 1 (idempotente)
+    const st = this.gameManager.getGameState(gameCode);
+    if (st && st.room.currentRound === 0) {
+      this.gameManager.startGame(gameCode);
+    }
 
     // Start immediately when the host starts manually
     const letter = this.generateRandomLetter();
@@ -177,7 +180,7 @@ export class GameService {
 
     const scores = this.gameManager.getScores(gameCode);
     const state = this.gameManager.getGameState(gameCode);
-    const currentRoundNumber = state?.room.currentRound || 1;
+    const currentRoundNumber = Math.max(1, state?.room.currentRound || 1);
     const currentRound = this.gameManager.getCurrentRound(gameCode);
     const answersByPlayer: Record<string, Record<string, string>> = {};
     if (state) {
@@ -196,28 +199,32 @@ export class GameService {
     this.io.to(gameCode).emit("round_finished", {
       finishedBy: username,
       answersByPlayer,
+      answers,
       letter: currentRound?.letter,
       scores: scores,
       roundNumber: currentRoundNumber,
     });
   }
 
-  public voteAnswer(gameCode: string, voterUsername: string, targetUsername: string, category: string, points: number): void {
+  public voteAnswer(gameCode: string, voterUsername: string, targetUsername: string, category: string, points: number, roundNumber?: number): void {
     // Normalizar puntos
     const valid = [0, 5, 10];
     if (!valid.includes(points)) {
       points = 0;
     }
 
-    const result = this.gameManager.addVote(gameCode, voterUsername, targetUsername, category, points);
+    const result = roundNumber ? this.gameManager.addVoteForRound(gameCode, roundNumber, voterUsername, targetUsername, category, points) : this.gameManager.addVote(gameCode, voterUsername, targetUsername, category, points);
     if (!result) return;
 
     // Notificar el update de puntos de ronda a todos
     const currentRound = this.gameManager.getCurrentRound(gameCode);
+    const rNum = roundNumber || currentRound?.roundNumber;
+    const round = roundNumber ? this.gameManager.getGameState(gameCode)?.rounds.find((r) => r.roundNumber === roundNumber) : currentRound;
+
     this.io.to(gameCode).emit("round_points_updated", {
-      roundNumber: currentRound?.roundNumber,
-      roundPoints: currentRound?.roundPoints || {},
-      votes: currentRound?.votes || {},
+      roundNumber: rNum,
+      roundPoints: round?.roundPoints || {},
+      votes: round?.votes || {},
     });
   }
 
@@ -246,7 +253,7 @@ export class GameService {
 
       // If it's the first ever round, make sure the counter starts at 1
       const stateBefore = this.gameManager.getGameState(gameCode);
-      if (stateBefore && stateBefore.room.currentRound === 0 && !isNewRound) {
+      if (stateBefore && stateBefore.room.currentRound === 0) {
         this.gameManager.startGame(gameCode);
       }
 
